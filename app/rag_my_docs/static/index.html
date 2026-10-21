@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="app-version" content="__VERSION__">
+  <meta name="theme-color" content="#f6f7f9">
+  <title>RAG My Docs</title>
+  <link rel="icon" href="/static/favicon.svg?v=__BUILD__" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png?v=__BUILD__">
+  <link rel="manifest" href="/static/manifest.webmanifest?v=__BUILD__">
+  <!-- Before the stylesheet and without defer: data-theme is on <html> before the first paint. -->
+  <script src="/static/theme.js?v=__BUILD__"></script>
+  <link rel="stylesheet" href="/static/ui.css?v=__BUILD__">
+  <script defer src="/static/icons.js?v=__BUILD__"></script>
+  <script defer src="/static/app.js?v=__BUILD__"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="app-header">
+    <div class="header-start">
+      <span class="brand">
+        <span class="brand-logo" data-icon="logo" aria-hidden="true"></span>
+        <span class="brand-name">RAG My Docs</span>
+      </span>
+      <button type="button" class="version" id="version-button" aria-expanded="false" aria-controls="version-text" aria-label="Version">
+        <span data-icon="tag" aria-hidden="true"></span>
+        <span class="version-text" id="version-text">v__VERSION__</span>
+      </button>
+    </div>
+    <nav class="app-nav" id="app-nav" aria-label="Main" hidden>
+      <button type="button" data-nav="ask"><span data-icon="search" aria-hidden="true"></span><span>Ask</span></button>
+      <button type="button" data-nav="documents"><span data-icon="file" aria-hidden="true"></span><span>Publications</span></button>
+    </nav>
+    <div class="header-tools">
+      <button type="button" class="icon-button" id="settings-open" data-nav="settings" aria-label="Language models" title="Language models" hidden>
+        <span data-icon="gear" aria-hidden="true"></span>
+      </button>
+      <button type="button" class="icon-button" id="theme-toggle" aria-label="Switch between light and dark">
+        <span class="icon-when-dark" data-icon="sun" aria-hidden="true"></span>
+        <span class="icon-when-light" data-icon="moon" aria-hidden="true"></span>
+      </button>
+      <button type="button" class="icon-button" id="sign-out" aria-label="Sign out" hidden>
+        <span data-icon="logout" aria-hidden="true"></span>
+      </button>
+    </div>
+  </header>
+
+  <main id="main" class="shell" tabindex="-1">
+    <p class="status" id="status" role="status" aria-live="polite" hidden></p>
+
+    <section data-view="loading" aria-busy="true">
+      <p class="muted">Loading…</p>
+    </section>
+
+    <section data-view="sign-in" class="narrow" aria-labelledby="sign-in-title" hidden>
+      <h1 id="sign-in-title">Sign in</h1>
+      <p class="muted">Retrieval-augmented generation, shown step by step on IRS publications. Sign-in is for the
+        app's owner.</p>
+      <div class="card">
+        <form id="link-form" novalidate>
+          <label for="sign-in-email">Email address</label>
+          <input id="sign-in-email" name="email" type="email" autocomplete="email" inputmode="email" required>
+          <button type="submit" class="button primary block" id="link-submit">
+            <span data-icon="mail" aria-hidden="true"></span><span>Email me a sign-in link</span>
+          </button>
+        </form>
+        <p class="notice" id="link-sent" role="status" hidden></p>
+      </div>
+    </section>
+
+    <section data-view="link" class="narrow" aria-labelledby="link-title" hidden>
+      <h1 id="link-title">Finish signing in</h1>
+      <div class="card">
+        <p>This sign-in link works once. Press the button to sign in on this device.</p>
+        <button type="button" class="button primary block" id="link-confirm">Sign in</button>
+        <button type="button" class="button block" id="link-back" hidden>Ask for a new link</button>
+      </div>
+    </section>
+
+    <section data-view="ask" aria-labelledby="ask-title" hidden>
+      <div class="view-head">
+        <h1 id="ask-title">Ask the IRS publications</h1>
+      </div>
+      <div class="notice">
+        <p>Questions are answered from 12 IRS publications for tax year 2025, and from nothing else:</p>
+        <ol class="rag-steps">
+          <li><strong>Embed</strong> the question into a vector, with the same local model as the passages.</li>
+          <li><strong>Retrieve</strong> the passages whose vectors are closest to it.</li>
+          <li><strong>Prompt</strong> a language model with those passages and the question.</li>
+          <li><strong>Answer</strong> from the passages alone, citing the ones used.</li>
+        </ol>
+        <p class="small">A question no passage is close to is answered "not covered", without calling the model.
+          Check the cited page before relying on an answer.</p>
+      </div>
+      <form class="card search-form" id="search-form" novalidate>
+        <label for="search-query">Question</label>
+        <textarea id="search-query" name="query" rows="2" maxlength="1000" required
+          placeholder="e.g. What is the 2025 standard deduction for a single filer?"></textarea>
+        <p class="small muted" id="examples-label">Or try one:</p>
+        <ul class="example-list" id="example-list" aria-labelledby="examples-label"></ul>
+        <div class="search-options">
+          <div>
+            <label for="search-top-k">Passages given to the model</label>
+            <select id="search-top-k" name="top_k" aria-describedby="top-k-hint">
+              <option value="1">1</option>
+              <option value="3">3</option>
+              <option value="5" selected>5</option>
+              <option value="10">10</option>
+            </select>
+          </div>
+          <p class="muted small" id="top-k-hint">More passages: a better chance the answer is among them, but a
+            longer prompt, slower and costlier, with more text the model must ignore.</p>
+        </div>
+        <div class="search-actions">
+          <button type="submit" class="button primary" id="answer-submit">
+            <span data-icon="check" aria-hidden="true"></span><span>Answer</span>
+          </button>
+          <button type="button" class="button quiet small" id="index-all">
+            <span data-icon="layers" aria-hidden="true"></span><span>Index what is missing</span>
+          </button>
+        </div>
+      </form>
+      <section class="card answer-panel" id="answer-panel" aria-labelledby="answer-title" aria-live="polite" hidden>
+        <div class="answer-head">
+          <h2 id="answer-title">Answer</h2>
+          <span class="chip" id="answer-found"></span>
+        </div>
+        <p class="answer-text" id="answer-text"></p>
+        <ul class="answer-citations" id="answer-citations" aria-label="Passages cited"></ul>
+        <p class="muted small" id="answer-meta"></p>
+        <h3 id="passages-title">Passages retrieved</h3>
+        <p class="muted small">Ranked by cosine similarity to the question: 1 means the same direction.
+          The model was given these, numbered as here.</p>
+        <ol class="search-results" id="answer-passages" aria-labelledby="passages-title"></ol>
+        <details class="answer-steps" id="answer-prompt-details">
+          <summary>What the model received</summary>
+          <p class="small" id="answer-no-model" hidden>No model was called: no passage was close enough to the question.</p>
+          <h3 class="small">Instructions</h3>
+          <pre class="chunk-text" id="answer-system"></pre>
+          <h3 class="small">Passages and question</h3>
+          <pre class="chunk-text" id="answer-prompt"></pre>
+        </details>
+      </section>
+      <details class="card evaluation" id="evaluation">
+        <summary>Test set</summary>
+        <p class="muted small">Questions with what a right answer needs: a passage from one of the publications
+          that hold it, and the facts the answer must contain. Each runs through the same steps as a question
+          above, with the number of passages chosen there.</p>
+        <ol class="evaluation-results" id="evaluation-results" aria-label="Test questions"></ol>
+        <div class="search-actions">
+          <button type="button" class="button primary" id="evaluation-run">
+            <span data-icon="check" aria-hidden="true"></span><span>Run all</span>
+          </button>
+        </div>
+        <p class="evaluation-summary" id="evaluation-summary" aria-live="polite"></p>
+      </details>
+    </section>
+
+    <section data-view="documents" aria-labelledby="documents-title" hidden>
+      <div class="view-head">
+        <h1 id="documents-title">Publications</h1>
+        <p class="muted" id="documents-summary"></p>
+      </div>
+      <p class="muted small">Downloaded from irs.gov when the app starts, each checked against its known checksum,
+        then cut into passages and embedded. Inspect one to see its sections and passages.</p>
+      <div class="toolbar">
+        <label for="document-filter" class="visually-hidden">Filter by name</label>
+        <span class="search-field">
+          <span data-icon="search" aria-hidden="true"></span>
+          <input id="document-filter" type="search" placeholder="Filter by name" autocomplete="off">
+        </span>
+      </div>
+      <p class="muted" id="documents-loading" hidden>Loading the publications…</p>
+      <p class="empty" id="documents-empty" hidden></p>
+      <ul class="document-list" id="document-list" aria-label="Publications"></ul>
+    </section>
+
+    <section data-view="inspect" aria-labelledby="inspect-title" hidden>
+      <button type="button" class="button quiet small" id="inspect-back">
+        <span data-icon="back" aria-hidden="true"></span><span>Publications</span>
+      </button>
+      <div class="view-head">
+        <h1 id="inspect-title">Publication</h1>
+        <button type="button" class="button" id="reprocess">
+          <span data-icon="refresh" aria-hidden="true"></span><span>Reprocess</span>
+        </button>
+      </div>
+      <div class="inspect-summary">
+        <p><span class="chip" id="inspect-status"></span> <span class="muted" id="inspect-meta"></span></p>
+        <p class="muted small" id="inspect-strategy"></p>
+        <p class="notice warning" id="inspect-stale" hidden>
+          These chunks were made with other chunk sizes than the current ones. Reprocess to apply the current settings.
+        </p>
+        <p class="notice error" id="inspect-error" hidden></p>
+        <ul class="facts-inline" id="inspect-report"></ul>
+        <div class="index-line">
+          <p><span class="chip" id="inspect-index-status"></span> <span class="muted" id="inspect-index-meta"></span></p>
+          <div class="index-actions">
+            <button type="button" class="button small" id="index-missing">
+              <span data-icon="layers" aria-hidden="true"></span><span>Index</span>
+            </button>
+            <button type="button" class="button small quiet" id="reindex">
+              <span data-icon="refresh" aria-hidden="true"></span><span>Reindex every chunk</span>
+            </button>
+          </div>
+        </div>
+        <p class="notice error" id="inspect-index-error" hidden></p>
+      </div>
+      <div class="tabs" role="tablist" aria-label="What to inspect">
+        <button type="button" role="tab" id="tab-chunks" aria-controls="panel-chunks" aria-selected="true">Sections &amp; chunks</button>
+        <button type="button" role="tab" id="tab-extraction" aria-controls="panel-extraction" aria-selected="false" tabindex="-1">Extracted text</button>
+      </div>
+      <div role="tabpanel" id="panel-chunks" aria-labelledby="tab-chunks">
+        <p class="muted" id="inspect-empty" hidden></p>
+        <div class="inspect-grid">
+          <nav class="section-tree" aria-label="Sections">
+            <h2>Sections</h2>
+            <ul id="section-tree"></ul>
+          </nav>
+          <div>
+            <div class="chunk-head">
+              <h2 id="chunk-heading">Chunks</h2>
+              <button type="button" class="button quiet small" id="chunk-filter-clear" hidden>Show every section</button>
+            </div>
+            <ol class="chunk-list" id="chunk-list"></ol>
+          </div>
+        </div>
+      </div>
+      <div role="tabpanel" id="panel-extraction" aria-labelledby="tab-extraction" hidden>
+        <p class="muted small">Every block read from the PDF, in reading order. Page headers and footers are struck through:
+          they are left out of the chunks. Headings open sections; tables are chunked by whole rows.</p>
+        <ol class="block-list" id="block-list"></ol>
+      </div>
+    </section>
+
+    <section data-view="settings" class="narrow" aria-labelledby="settings-title" hidden>
+      <h1 id="settings-title">Language models</h1>
+      <section class="card" aria-labelledby="llm-connections-title">
+        <div class="view-head">
+          <h2 id="llm-connections-title">Connections</h2>
+          <button type="button" class="button small" id="llm-add">
+            <span data-icon="plus" aria-hidden="true"></span><span>Add a connection</span>
+          </button>
+        </div>
+        <p class="muted small">Answers use a language model: Claude in the cloud, or any OpenAI-compatible
+          endpoint, such as a vLLM server on your own machine. The light says whether each one answers now.
+          Keys are stored encrypted and never shown again.</p>
+        <p class="muted" id="llm-empty" hidden>No connection yet: answers are off until one is added and chosen below.</p>
+        <ul class="connection-list" id="llm-connection-list" aria-label="Language model connections"></ul>
+      </section>
+      <section class="card" aria-labelledby="llm-routing-title">
+        <h2 id="llm-routing-title">Which connection answers</h2>
+        <form id="llm-routing-form">
+          <label for="llm-route-answers">The model given the passages and the question</label>
+          <select id="llm-route-answers" name="answers"></select>
+          <button type="submit" class="button primary" id="llm-routing-save">Save</button>
+        </form>
+      </section>
+    </section>
+  </main>
+
+  <dialog class="modal" id="modal" aria-labelledby="modal-title">
+    <form class="modal-frame" id="modal-form" novalidate>
+      <h2 id="modal-title"></h2>
+      <div class="modal-body" id="modal-body"></div>
+      <p class="modal-error" id="modal-error" role="alert" hidden></p>
+      <div class="modal-actions" id="modal-actions"></div>
+    </form>
+  </dialog>
+</body>
+</html>

@@ -1,0 +1,116 @@
+# Blue/green: two identical app services; the host nginx points at exactly one.
+x-app: &rag_my_docs-app
+  build:
+    context: .
+    args:
+      BUILD_TIME: ${BUILD_TIME:-dev}
+      APP_VERSION: ${APP_VERSION:-dev}
+      APP_COMMIT: ${APP_COMMIT:-dev}
+      # The embedding model baked into the image; .env's EMBEDDING_MODEL must match.
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-BAAI/bge-small-en-v1.5}
+  env_file: .env
+  environment:
+    # Inside the compose network the database is the service on its own port;
+    # the DB_PORT of .env is the host's loopback port, for tools on the host.
+    DATABASE_URL: postgresql://${DB_USER:-user_rag_my_docs}:${DB_PASSWORD:?set DB_PASSWORD in .env}@rag_my_docs-db:5432/${DB_NAME:-db_rag_my_docs}
+  restart: unless-stopped
+  security_opt:
+    - no-new-privileges:true
+  # One runaway app must not starve a shared host — tune per app. The embedding
+  # model and PyTorch take ~600 MB once loaded; a large PDF being processed needs
+  # its own share on top. Both colors run at once during a deploy: 4 GB in all.
+  mem_limit: 2g
+  pids_limit: 256
+  # In-flight requests finish before the old color dies.
+  stop_grace_period: 30s
+  depends_on:
+    rag_my_docs-db:
+      condition: service_healthy
+
+services:
+  rag_my_docs-app-blue:
+    <<: *rag_my_docs-app
+    container_name: rag_my_docs-app-blue
+    ports:
+      # Loopback only: the host nginx is the sole ingress — nothing can bypass it
+      # to spoof X-Real-IP against the app port.
+      - "127.0.0.1:${APP_PORT_BLUE:-8140}:8000"
+
+  rag_my_docs-app-green:
+    <<: *rag_my_docs-app
+    container_name: rag_my_docs-app-green
+    ports:
+      - "127.0.0.1:${APP_PORT_GREEN:-8141}:8000"
+
+  rag_my_docs-db:
+    # PostgreSQL 16 with the pgvector extension, for the chunks' embeddings.
+    image: pgvector/pgvector:0.8.7-pg16
+    container_name: rag_my_docs-db
+    environment:
+      POSTGRES_DB: ${DB_NAME:-db_rag_my_docs}
+      POSTGRES_USER: ${DB_USER:-user_rag_my_docs}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+    volumes:
+      - rag_my_docs_db:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:${DB_PORT:-5540}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-user_rag_my_docs}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+    # The same hardening as the app; the entrypoint drops from root to postgres itself.
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 1g
+    pids_limit: 256
+    # Lets PostgreSQL finish a clean shutdown checkpoint.
+    stop_grace_period: 60s
+
+  rag_my_docs-backup:
+    build:
+      context: ./deploy
+      dockerfile: backup.Dockerfile
+    container_name: rag_my_docs-backup
+    # Backup credentials live in a separate file only this sidecar receives; the app
+    # containers never see them.
+    env_file: .env.backup
+    depends_on:
+      rag_my_docs-db:
+        condition: service_healthy
+    volumes:
+      - rag_my_docs_backups:/backups
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 512m
+    pids_limit: 128
+    # backup.Dockerfile runs it as `postgres`, not root.
+    # A failed run retries hourly instead of sleeping a whole interval.
+    # $$ defers the expansion to the container, where env_file supplies the value;
+    # a single $ would be resolved by Compose from .env, which does not carry it.
+    command:
+      - bash
+      - -c
+      - |
+        while true; do
+          if bash /backup/backup.sh; then
+            sleep $${BACKUP_INTERVAL_SECONDS:-86400}
+          else
+            echo "backup failed — retrying in an hour" >&2
+            sleep 3600
+          fi
+        done
+    # A live loop is not a working backup: unhealthy once the last success is older
+    # than one interval plus two hourly retries (deploy-prod.sh warns on it). The
+    # alert that reaches a person is BACKUP_HEARTBEAT_URL's monitor (.env.backup).
+    healthcheck:
+      test: ["CMD-SHELL", "[ $$(( $$(date +%s) - $$(cat /backups/last-success) )) -lt $$(( $${BACKUP_INTERVAL_SECONDS:-86400} + 7200 )) ]"]
+      interval: 10m
+      timeout: 10s
+      start_period: 30m
+    restart: unless-stopped
+
+volumes:
+  rag_my_docs_db:
+  rag_my_docs_backups:

@@ -1,0 +1,108 @@
+[project]
+name = "rag_my_docs"
+version = "0.1.0"
+description = "Your documents — PDFs, images and text — kept encrypted, ready to be searched"
+requires-python = ">=3.12"
+dependencies = [
+    # Exact pins only (==). Every entry must be justified — stdlib first.
+    # The HTTP shell: routes, request models, the ASGI server.
+    "fastapi==0.141.1",
+    "pydantic==2.13.5",
+    "uvicorn==0.53.0",
+    # The database, raw SQL and nothing between it and the schema. `binary`
+    # ships libpq in the wheel, so the runtime image needs no compiler.
+    "psycopg[binary]==3.3.6",
+    # Seals the documents, their names and the emails at rest. Authenticated
+    # symmetric encryption is not a thing to hand-roll;
+    # Fernet is its smallest honest surface.
+    "cryptography==50.0.1",
+    # PDF text, fonts, layout, tables and bookmarks. Pinned below 2.0, whose
+    # machine-learning layout stack (onnxruntime, numpy) this deterministic
+    # pipeline neither needs nor wants. AGPL-3.0, like this public repository's use of it.
+    "pymupdf==1.27.2.3",
+    # Local embeddings for semantic search: the model runs in this process, so
+    # no document text or question ever leaves the server. It brings PyTorch.
+    "sentence-transformers==6.1.0",
+    # Pinned and taken from PyTorch's CPU-only index (below): the default wheel
+    # carries GPU libraries worth gigabytes that a CPU-only VM never uses.
+    "torch==2.14.1",
+    # Claude, when an admin adds a Claude connection. Anthropic's own SDK rather
+    # than a hand-rolled call: its typed errors drive the connection light, and
+    # the request surface (effort, refusals and their fallback) moves with the API.
+    "anthropic==1.15.0",
+]
+
+[dependency-groups]
+dev = [
+    # Starlette's TestClient drives the API in-process. It asks
+    # for this package rather than httpx 0.x, whose deprecation warning
+    # `filterwarnings = ["error"]` would turn into a failure.
+    "httpx2==2.13.0",
+    # The established library MediaSniffer is compared against: used in that
+    # comparison test only, never shipped.
+    "filetype==1.2.0",
+    # The rule-based sentence segmenter SentenceSplitter is compared against, in
+    # that comparison test only (unmaintained: never shipped).
+    "pysbd==0.3.4",
+    "mypy==1.17.1",
+    "pytest==8.4.1",
+    "pytest-cov==6.2.1",
+    "pytest-xdist==3.8.0",      # the suite on every core
+    "ruff==0.12.8",
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["app"]
+addopts = "-n auto --cov=rag_my_docs --cov-report=term-missing --cov-fail-under=100"
+markers = ["database: runs against the scratch PostgreSQL, from empty tables"]
+filterwarnings = [
+    "error",
+    # pysbd (dev-only, compared against in one test) has regex strings with
+    # invalid escapes, which Python 3.12 reports when it compiles them. Our own
+    # code cannot hide behind this: ruff's W605 flags any invalid escape in it.
+    "ignore:invalid escape sequence:SyntaxWarning",
+    # Third-party deprecations silenced one by one, each with a reason:
+    # "ignore:<message>:DeprecationWarning",
+]
+
+[tool.coverage.run]
+source = ["rag_my_docs"]
+core = "sysmon"                 # sys.monitoring: line coverage at a fraction of the cost
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"        # Matches the requires-python compatibility baseline.
+# The package lives under app/, and tests/ is imported by name: both are this
+# project's own imports, grouped last.
+src = ["app", "."]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "W", "Q", "B", "TID252"]
+ignore = [
+    "E501",                     # the formatter owns line width
+    "B008",                     # FastAPI Depends() in parameter declarations
+]
+fixable = ["ALL"]
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.mypy]
+python_version = "3.12"         # Matches the requires-python compatibility baseline.
+strict = true
+mypy_path = "app"
+packages = ["rag_my_docs"]
+exclude = "^tests/"             # tests stay fully annotated by convention
