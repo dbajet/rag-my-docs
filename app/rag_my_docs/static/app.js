@@ -878,6 +878,9 @@ function connectionShown(connection) {
   const remove = element("button", { type: "button", class: "button small quiet danger-text" }, iconLabelled("trash", "Delete"));
   remove.addEventListener("click", () => connectionRemovalAsked(connection));
   const facts = [`Model: ${connection.model}`];
+  if (connection.key_hint !== "") {
+    facts.push(`Key ${connection.key_hint}`);
+  }
   if (connection.kind === "openai") {
     facts.unshift(connection.base_url);
   }
@@ -933,7 +936,8 @@ function connectionAsked(connection) {
   ]);
   const urlInput = element("input", { type: "url", name: "base_url", value: values.base_url, placeholder: "https://llm.example.com/v1" }, []);
   const urlField = element("div", { class: "kind-openai" }, field("Address of the API, ending in /v1", urlInput));
-  const keyHint = isNew || connection.has_key === false ? "API key" : "API key (leave empty to keep the stored one)";
+  const storedKey = isNew || connection.key_hint === "" ? "the stored one" : `the stored ${connection.key_hint}`;
+  const keyLabel = isNew || connection.has_key === false ? "API key" : `API key (leave empty to keep ${storedKey})`;
   const keyInput = element("input", { type: "password", name: "api_key", autocomplete: "off" }, []);
   const thinking = element("div", { class: "kind-openai" }, [
     checkbox("Ask the model not to think first (faster; vLLM reasoning models)", "disable_thinking", values.disable_thinking),
@@ -949,7 +953,7 @@ function connectionAsked(connection) {
       ...field("Kind", kindSelect),
       ...field("Name", element("input", { type: "text", name: "name", maxlength: 80, value: values.name }, [])),
       urlField,
-      ...field(keyHint, keyInput),
+      ...field(keyLabel, keyInput),
       element("p", { class: "muted small", text: "Connect to fetch the models this key can use." }, []),
     ]),
     models: element("div", { role: "tabpanel", id: "connection-panel-models", "aria-labelledby": "connection-tab-models" }, [

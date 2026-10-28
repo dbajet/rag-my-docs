@@ -41,6 +41,10 @@ class _LlmConstants:
 
     # --- connections ---------------------------------------------------------------------
     max_name_chars: int = 80
+    # A stored key is shown by its tail, to tell it apart when rotating it;
+    # a key shorter than the minimum shows none, so the tail is never most of it.
+    key_hint_tail_chars: int = 4
+    key_hint_min_chars: int = 16
     # Anthropic's largest page: every model in one request.
     claude_model_page: int = 1000
 

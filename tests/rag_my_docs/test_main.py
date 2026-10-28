@@ -645,7 +645,7 @@ def test_created__answer_and_evaluation_flow() -> None:
         "name": "Local",
         "kind": "openai",
         "base_url": "https://llm.example.com/v1/",
-        "api_key": "the-key",
+        "api_key": "the-local-key-AbCd",
         "model": "good",
     }
     publications = [helper_publication("report.pdf", helper_report_pdf())]
@@ -659,7 +659,7 @@ def test_created__answer_and_evaluation_flow() -> None:
         helper_owner_in(client, fake, 1)
         offered = client.post(
             "/api/llm/models",
-            json={"kind": "openai", "base_url": "https://llm.example.com/v1/", "api_key": "the-key"},
+            json={"kind": "openai", "base_url": "https://llm.example.com/v1/", "api_key": "the-local-key-AbCd"},
             headers=helper_origin(),
         )
         created = client.post("/api/llm/connections", json=connection, headers=helper_origin())
@@ -683,6 +683,7 @@ def test_created__answer_and_evaluation_flow() -> None:
         "kind": "openai",
         "base_url": "https://llm.example.com/v1",
         "has_key": True,
+        "key_hint": "…AbCd",
         "model": "good",
         "disable_thinking": True,
     }
@@ -786,11 +787,11 @@ def test_created__answer_and_evaluation_flow() -> None:
     assert [similarities[0] >= 0.66, similarities[0] > similarities[1]] == exp_similar
     # What left the server: the model list twice, then the passages and the question, once.
     url = "https://llm.example.com/v1"
-    light_request = (f"{url}/models", "GET", "Bearer the-key", {}, 8.0)
+    light_request = (f"{url}/models", "GET", "Bearer the-local-key-AbCd", {}, 8.0)
     answer_request = (
         f"{url}/chat/completions",
         "POST",
-        "Bearer the-key",
+        "Bearer the-local-key-AbCd",
         helper_chat_body("good", SYSTEM, prompt, 1500),
         120.0,
     )

@@ -15,7 +15,7 @@ from rag_my_docs.structures.llm_routing import LlmRouting
 
 class LlmConnectionRouter:
     """Settings › Language models. Keys go in, never out: every answer
-    carries `has_key` instead."""
+    carries `has_key` and the key's tail, `key_hint`, instead."""
 
     def __init__(self, guard: SessionGuard, connections: LlmConnectionCommand) -> None:
         self._guard = guard

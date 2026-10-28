@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, NamedTuple
 
+from rag_my_docs.constants.llm_constants import LlmConstants
 from rag_my_docs.constants.llm_kind import LlmKind
 
 
@@ -9,7 +10,7 @@ class LlmConnection(NamedTuple):
     """A language model the app can call: Claude through Anthropic's API, or
     any OpenAI-compatible endpoint (a local vLLM, a hosted provider). The key
     is opened here and never leaves the server: `public_dict` says only
-    whether there is one."""
+    whether there is one, and how it ends."""
 
     connection_id: int
     name: str
@@ -30,9 +31,18 @@ class LlmConnection(NamedTuple):
             "kind": self.kind.value,
             "base_url": self.base_url,
             "has_key": self.api_key != "",
+            "key_hint": self.key_hint(),
             "model": self.model,
             "disable_thinking": self.disable_thinking,
         }
+
+    def key_hint(self) -> str:
+        """The key's last characters, as the provider's console shows them, so
+        the key to rotate can be told apart. A short key gets none: its tail
+        would be too much of it."""
+        if len(self.api_key) < LlmConstants.key_hint_min_chars:
+            return ""
+        return f"…{self.api_key[-LlmConstants.key_hint_tail_chars :]}"
 
     def to_dict(self) -> dict[str, Any]:
         return {
